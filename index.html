@@ -1,277 +1,36 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>chatjp – シンプルWebチャット（GitHub Pages版）</title>
-  <meta name="color-scheme" content="light dark">
-  <style>
-    :root{
-      --bg: #0b0f14;
-      --panel: #121821;
-      --border:#223047;
-      --text:#e8eef7;
-      --muted:#9bb0c9;
-      --accent:#4ea1ff;
-      --mine:#2a6fff;
-      --mineText:#fff;
-      --other:#1d2430;
-      --radius:16px;
-      --shadow: 0 6px 20px rgba(0,0,0,.35);
-    }
-    @media (prefers-color-scheme: light){
-      :root{
-        --bg:#f6f8fb; --panel:#ffffff; --border:#e6ebf2;
-        --text:#0f1726; --muted:#57718f; --accent:#2563eb;
-        --mine:#2563eb; --mineText:#fff; --other:#f1f5fb;
-        --shadow: 0 10px 24px rgba(16,24,40,.08);
+  <meta charset="UTF-8">
+  <title>シンプルチャット</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var socket = io();
+
+      // メッセージを受け取ったときの処理
+      socket.on('message', function(msg) {
+        var p = document.createElement('p');
+        p.innerText = msg;
+        document.body.appendChild(p);
+      });
+
+      // メッセージを送信する関数
+      function sendMessage() {
+        var input = document.getElementById('msg');
+        var message = input.value;
+        if (message.trim() !== '') {
+          socket.emit('message', message);
+          input.value = '';
+        }
       }
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
-      background:var(--bg); color:var(--text);
-      display:flex; align-items:center; justify-content:center;
-    }
-    .app{
-      width:min(900px,100%);
-      height:100dvh; max-height:900px;
-      display:grid; grid-template-rows:auto 1fr auto;
-      background:var(--panel); border:1px solid var(--border);
-      border-radius:24px; box-shadow:var(--shadow); overflow:hidden;
-    }
-    header, footer{padding:14px 16px; border-bottom:1px solid var(--border)}
-    footer{border-bottom:none; border-top:1px solid var(--border)}
-    header{
-      display:flex; gap:12px; align-items:center; justify-content:space-between;
-      background:linear-gradient(180deg, rgba(78,161,255,.10), transparent);
-    }
-    .title{display:flex; align-items:center; gap:10px}
-    .dot{width:10px; height:10px; border-radius:999px; background:var(--accent); box-shadow:0 0 0 4px rgba(78,161,255,.18)}
-    .subtitle{color:var(--muted); font-size:13px}
-    .toolbar{display:flex; gap:8px; flex-wrap:wrap}
-    button, .ghost{
-      appearance:none; border:1px solid var(--border); background:transparent; color:var(--text);
-      padding:8px 12px; border-radius:12px; cursor:pointer; font-weight:600;
-    }
-    button.primary{background:var(--accent); color:#fff; border-color:transparent}
-    button:disabled{opacity:.5; cursor:not-allowed}
-    main{
-      padding:12px; overflow:auto; display:flex; flex-direction:column; gap:10px;
-      background:
-        radial-gradient(1200px 400px at 100% -20%, rgba(78,161,255,.08), transparent 60%),
-        radial-gradient(1000px 400px at -10% 0%, rgba(37,99,235,.06), transparent 50%);
-    }
-    .msg{
-      max-width:70%; padding:10px 12px; border-radius:14px; position:relative; word-wrap:break-word;
-      border:1px solid var(--border); backdrop-filter: saturate(130%) blur(2px);
-    }
-    .mine{ align-self:flex-end; background:var(--mine); color:var(--mineText); border-color:transparent }
-    .other{ align-self:flex-start; background:var(--other) }
-    .meta{ font-size:12px; color:var(--muted); margin-top:2px }
-    .mine .meta{ opacity:.85; color:#eaf1ff }
-    .sys{ align-self:center; font-size:12px; color:var(--muted); margin:8px 0 }
-    .composer{ display:flex; gap:8px; padding:8px }
-    .input{
-      flex:1; border:1px solid var(--border); background:transparent; color:var(--text);
-      padding:12px 14px; border-radius:14px; outline:none;
-    }
-    .row{display:flex; gap:8px; align-items:center}
-    .small{font-size:12px; color:var(--muted)}
-    a.link{color:var(--accent); text-decoration:none}
-    .hidden{display:none}
-  </style>
+    });
+  </script>
 </head>
 <body>
-  <div class="app" id="app">
-    <header>
-      <div class="title">
-        <div class="dot" aria-hidden="true"></div>
-        <div>
-          <div style="font-weight:800">chatjp（ローカル・デモ）</div>
-          <div class="subtitle">GitHub Pages で動くスタンドアロン。タブ間同期対応</div>
-        </div>
-      </div>
-      <div class="toolbar">
-        <button id="exportBtn" title="履歴を書き出し">エクスポート</button>
-        <label class="ghost" for="importFile" title="履歴を読み込み">インポート</label>
-        <input id="importFile" type="file" accept="application/json" class="hidden" />
-        <button id="clearBtn" title="すべて削除">全削除</button>
-      </div>
-    </header>
-
-    <main id="list" aria-live="polite"></main>
-
-    <footer>
-      <div class="row" style="justify-content:space-between; margin-bottom:8px">
-        <div class="small">あなた: <span id="nick"></span>（ID: <span id="uid"></span>）</div>
-        <div class="small">
-          <span>保存先: ブラウザ</span> ·
-          <a class="link" href="https://github.com/settings/pages" target="_blank" rel="noreferrer">Pagesの公開手順</a>
-        </div>
-      </div>
-      <div class="composer">
-        <input id="input" class="input" placeholder="メッセージを入力（Enterで送信）" autocomplete="off" />
-        <button id="sendBtn" class="primary">送信</button>
-      </div>
-    </footer>
-  </div>
-
-  <script>
-    // ====== 環境定義（後でサーバー実装時に差し替えやすいように分離） ======
-    const ENV = {
-      STORAGE_KEY: 'chatjp/messages/v1',
-      PROFILE_KEY: 'chatjp/profile/v1',
-      CHANNEL: 'chatjp-broadcast-v1',
-      MAX_MESSAGES: 1000
-    };
-
-    // ====== ユーザー識別（初回起動時に生成して保存） ======
-    const profile = (() => {
-      const saved = JSON.parse(localStorage.getItem(ENV.PROFILE_KEY) || 'null');
-      if (saved && saved.uid && saved.name) return saved;
-      const uid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
-      const name = 'ユーザー-' + uid.split('-')[0].slice(0,4);
-      const p = { uid, name, createdAt: Date.now() };
-      localStorage.setItem(ENV.PROFILE_KEY, JSON.stringify(p));
-      return p;
-    })();
-
-    // ====== ストレージ & 状態 ======
-    const state = {
-      messages: loadMessages(),
-    };
-
-    function loadMessages(){
-      try{
-        const arr = JSON.parse(localStorage.getItem(ENV.STORAGE_KEY) || '[]');
-        return Array.isArray(arr) ? arr.slice(-ENV.MAX_MESSAGES) : [];
-      }catch{ return []; }
-    }
-    function saveMessages(){
-      localStorage.setItem(ENV.STORAGE_KEY, JSON.stringify(state.messages.slice(-ENV.MAX_MESSAGES)));
-    }
-
-    // ====== DOM 参照 ======
-    const $list = document.getElementById('list');
-    const $input = document.getElementById('input');
-    const $send = document.getElementById('sendBtn');
-    const $export = document.getElementById('exportBtn');
-    const $import = document.getElementById('importFile');
-    const $clear = document.getElementById('clearBtn');
-    document.getElementById('uid').textContent = profile.uid.slice(0,8);
-    document.getElementById('nick').textContent = profile.name;
-
-    // ====== 表示 ======
-    function render(){
-      $list.innerHTML = '';
-      for (const m of state.messages){
-        if (m.type === 'sys'){
-          const d = document.createElement('div');
-          d.className = 'sys';
-          d.textContent = m.text;
-          $list.appendChild(d);
-          continue;
-        }
-        const wrap = document.createElement('div');
-        wrap.className = 'msg ' + (m.uid === profile.uid ? 'mine' : 'other');
-        const text = document.createElement('div');
-        text.textContent = m.text; // XSS対策: textContent
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        const when = new Date(m.ts);
-        meta.textContent = (m.uid === profile.uid ? 'あなた' : (m.name || '名無し')) + ' · ' +
-          when.toLocaleString();
-        wrap.appendChild(text);
-        wrap.appendChild(meta);
-        $list.appendChild(wrap);
-      }
-      $list.scrollTop = $list.scrollHeight;
-    }
-
-    // ====== 送信（ローカル保存 + タブ間配信） ======
-    function send(text){
-      if (!text) return;
-      const msg = { id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), uid: profile.uid, name: profile.name, text, ts: Date.now(), type:'chat' };
-      state.messages.push(msg);
-      saveMessages();
-      render();
-      broadcast.postMessage({ kind:'chat', payload: msg });
-    }
-
-    // ====== タブ間同期（同一端末） ======
-    const broadcast = ('BroadcastChannel' in window) ? new BroadcastChannel(ENV.CHANNEL) : null;
-    if (broadcast){
-      broadcast.onmessage = (ev) => {
-        const { kind, payload } = ev.data || {};
-        if (kind === 'chat'){
-          // 重複チェック
-          if (!state.messages.some(x => x.id === payload.id)){
-            state.messages.push(payload);
-            saveMessages();
-            render();
-          }
-        } else if (kind === 'import'){
-          state.messages = payload.slice(-ENV.MAX_MESSAGES);
-          saveMessages(); render();
-        } else if (kind === 'clear'){
-          state.messages = [];
-          saveMessages(); render();
-        }
-      };
-      // 参加メッセージ
-      if (!state.messages.find(m => m.type === 'sys' && m.text.includes(profile.name))){
-        const sys = { id:'sys-'+Date.now(), type:'sys', text:`${profile.name} が参加しました`, ts: Date.now() };
-        state.messages.push(sys); saveMessages();
-      }
-    }
-
-    // ====== イベント ======
-    $send.addEventListener('click', () => { const t = $input.value.trim(); if (t){ send(t); $input.value=''; $input.focus(); }});
-    $input.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.isComposing){ e.preventDefault(); $send.click(); }
-    });
-
-    // Export / Import / Clear
-    $export.addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(state.messages, null, 2)], { type:'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `chatjp-history-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    });
-
-    $import.addEventListener('change', async (e) => {
-      const file = e.target.files?.[0]; if (!file) return;
-      const text = await file.text();
-      try{
-        const arr = JSON.parse(text);
-        if (!Array.isArray(arr)) throw new Error('Invalid format');
-        state.messages = arr.slice(-ENV.MAX_MESSAGES);
-        saveMessages(); render();
-        broadcast?.postMessage({ kind:'import', payload: state.messages });
-      }catch(err){
-        alert('読み込みに失敗しました: ' + err.message);
-      }finally{
-        e.target.value = '';
-      }
-    });
-
-    $clear.addEventListener('click', () => {
-      if (!confirm('すべてのメッセージを削除します。よろしいですか？')) return;
-      state.messages = []; saveMessages(); render();
-      broadcast?.postMessage({ kind:'clear' });
-    });
-
-    // 初期描画
-    render();
-
-    // ====== 将来のサーバー接続ポイント（雛形） ======
-    // 例）WebSocket 実装時は以下を差し替え
-    // const ws = new WebSocket('wss://example.com/ws');
-    // ws.onmessage = (ev)=>{ const msg = JSON.parse(ev.data); state.messages.push(msg); saveMessages(); render(); };
-    // 送信は send() 内で ws.send(JSON.stringify(msg)) を呼ぶようにする
-  </script>
+  <h1>シンプルチャット</h1>
+  <input id="msg" type="text" placeholder="メッセージを入力" />
+  <button onclick="sendMessage()">送信</button>
+  <div id="chat"></div>
 </body>
 </html>
